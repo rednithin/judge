@@ -1,6 +1,6 @@
 use libc::{rlimit64, setrlimit64, RLIMIT_CPU, SIGXCPU};
 use std::io::Write;
-use std::{os::unix::prelude::*, process::Command, process::ExitStatus};
+use std::{os::unix::prelude::*, process::Command};
 
 trait Isolate {
     fn isolate(&mut self) -> &mut Self;
@@ -10,7 +10,6 @@ impl Isolate for Command {
     fn isolate(&mut self) -> &mut Self {
         unsafe {
             self.pre_exec(move || {
-                let pid = std::process::id().to_string();
                 setrlimit64(
                     RLIMIT_CPU,
                     &rlimit64 {
@@ -37,10 +36,8 @@ fn main() {
     std::io::stderr().write_all(&output.stderr).unwrap();
     println!("Other stuff");
 
-    if let Some(x) = output.status.signal() {
-        match x {
-            SIGXCPU => println!("Time limit exceeded"),
-            _ => println!("Failed due to unknown reason"),
-        }
+    match output.status.signal() {
+        Some(SIGXCPU) => println!("Time limit exceeded"),
+        _ => println!("Failed due to unknown reason"),
     }
 }

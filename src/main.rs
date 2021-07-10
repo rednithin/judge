@@ -24,8 +24,40 @@ impl Isolate for Command {
 }
 
 fn main() {
-    let output = Command::new("python3")
-        .args(&["abc.py"])
+    let output = Command::new("nsjail")
+        .args(&[
+            "-Mo",
+            "-Q",
+            "--user",
+            "256",
+            "--group",
+            "99999",
+            "-R",
+            "/bin/",
+            "-R",
+            "/lib",
+            "-R",
+            "/lib64/",
+            "-R",
+            "/usr/",
+            "-R",
+            "/sbin/",
+            "-T",
+            "/dev",
+            "-R",
+            "/dev/urandom",
+            "--keep_caps",
+            "--skip_setsid",
+            "--rlimit_cpu",
+            "10",
+            "-R",
+            "/home/nithin/Git/judge/prepare.sh",
+            "-R",
+            "/home/nithin/Git/judge/abc.py",
+            "--",
+            "/bin/bash",
+            "/home/nithin/Git/judge/prepare.sh",
+        ])
         .isolate()
         .output()
         .expect("failed to execute process");

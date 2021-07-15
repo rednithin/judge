@@ -8,3 +8,14 @@ edition = "2018"
 [dependencies]
 libc = "*"
 seccomp-sys = "*"
+tokio = { version = "1", features = ["full"] }
+hyper = "*"
+anyhow = "*"
+uuid = { version = "*", features = ["v4"] }
+routerify = "*"
+tracing = "*"
+tracing-subscriber = { version = "*", features = ["default", "env-filter"] }
+tracing-futures = "*"
+chrono="*"
+tracing-bunyan-formatter = "*"
+async-trait = "*"

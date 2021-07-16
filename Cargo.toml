@@ -19,3 +19,5 @@ tracing-futures = "*"
 chrono="*"
 tracing-bunyan-formatter = "*"
 async-trait = "*"
+serde_json = "*"
+serde = {version = "*", features = ["derive"]}

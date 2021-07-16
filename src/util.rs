@@ -1,6 +1,7 @@
-use libc::{rlimit64, setrlimit64, RLIMIT_CPU, SIGXCPU};
-use std::io::Write;
-use std::{os::unix::prelude::*, process::Command};
+use anyhow::bail;
+use hyper::{Body, Request};
+use serde::de::DeserializeOwned;
+
 use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
 use tracing_subscriber::prelude::__tracing_subscriber_SubscriberExt;
 use tracing_subscriber::{EnvFilter, Registry};
@@ -16,52 +17,29 @@ pub fn initialize_tracing() {
     tracing::subscriber::set_global_default(subscriber).unwrap();
 }
 
-pub fn gg() {
-    let output = Command::new("nsjail")
-        .args(&[
-            "-Mo",
-            "-Q",
-            "--user",
-            "256",
-            "--group",
-            "99999",
-            "-R",
-            "/bin/",
-            "-R",
-            "/lib",
-            "-R",
-            "/lib64/",
-            "-R",
-            "/usr/",
-            "-R",
-            "/sbin/",
-            "-T",
-            "/dev",
-            "-R",
-            "/dev/urandom",
-            "--keep_caps",
-            "--skip_setsid",
-            "--rlimit_cpu",
-            "10",
-            "-R",
-            "/home/nithin/Git/judge/prepare.sh",
-            "-R",
-            "/home/nithin/Git/judge/abc.py",
-            "--",
-            "/bin/bash",
-            "/home/nithin/Git/judge/prepare.sh",
-        ])
-        .output()
-        .expect("failed to execute process");
-
-    println!("Output start");
-    std::io::stdout().write_all(&output.stdout).unwrap();
-    println!("Error start");
-    std::io::stderr().write_all(&output.stderr).unwrap();
-    println!("Other stuff");
-
-    match output.status.signal() {
-        Some(SIGXCPU) => println!("Time limit exceeded"),
-        _ => println!("Failed due to unknown reason"),
+pub async fn get_request_body<T: DeserializeOwned>(req: &mut Request<Body>) -> anyhow::Result<T> {
+    match hyper::body::to_bytes(req.body_mut()).await {
+        Ok(bytes) => {
+            let bytes = bytes.to_vec();
+            let body = match serde_json::from_slice::<T>(bytes.as_slice()) {
+                Ok(body) => Ok(body),
+                Err(e) => bail!("Failed to parse request body: {}", e),
+            };
+            body
+        }
+        Err(e) => bail!("Failed to convert payload to bytes: {}", e),
     }
+}
+
+#[macro_export]
+macro_rules! traceroute {
+    ($fn: expr) => {
+        |req| async move {
+            let span = req.extensions().get::<Span>().cloned();
+            match span {
+                Some(x) => $fn(req).instrument(x).await,
+                None => $fn(req).await,
+            }
+        }
+    };
 }

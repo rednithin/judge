@@ -1,19 +1,16 @@
 use hyper::{Body, Request, Response, Server, StatusCode};
-// Import the routerify prelude traits.
-use routerify::prelude::*;
+// use routerify::prelude::*;
 use routerify::{Middleware, RequestInfo, Router, RouterService};
-use std::collections::HashMap;
-use std::net::IpAddr;
-use std::sync::{Arc, Mutex};
-use std::{convert::Infallible, net::SocketAddr};
-use tokio::net::UdpSocket;
-use tracing::{info, Span};
-use tracing::{instrument, Instrument};
-use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::EnvFilter;
-use tracing_subscriber::Registry;
+use tracing::Instrument;
+
+use std::net::SocketAddr;
+
+use tracing::Span;
+
 use uuid::Uuid;
+
+use crate::traits::{LanguageExecutor, Python};
+use crate::util::get_request_body;
 
 mod traits;
 mod util;
@@ -21,55 +18,58 @@ mod util;
 // Define an app state to share it across the route handlers and middlewares.
 struct State(u64);
 
-macro_rules! traceroute {
-    ($fn: expr) => {
-        |req| async move {
-            let span = req.extensions().get::<Span>().cloned();
-            match span {
-                Some(x) => $fn(req).instrument(x).await,
-                None => $fn(req).await,
-            }
-        }
-    };
+#[derive(Debug, serde::Deserialize)]
+struct CodeExecutionRequest {
+    code: String,
+    language: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct CodeExecutionResponse {
+    stdout: Option<String>,
+    stderr: Option<String>,
 }
 
 // A handler for "/" page.
 #[tracing::instrument(skip(req))]
-async fn home_handler(req: Request<Body>) -> Result<Response<Body>, Infallible> {
+async fn exec_handler(mut req: Request<Body>) -> anyhow::Result<Response<Body>> {
     // Access the app state.
-    let state = req.data::<State>().unwrap();
+    let processed_request = get_request_body::<CodeExecutionRequest>(&mut req).await?;
     let span = req.extensions().get::<Span>().cloned();
 
-    println!("State value: {}", state.0);
-    info!("Orphan event without a parent span");
-    let mut response = Response::new(Body::from("Home page"));
+    let uuid = Uuid::new_v4();
+    let response = match processed_request.language.as_str() {
+        "PYTHON" => {
+            let python = Python::new(uuid, processed_request.code);
+            python.prepare().await?;
+            let output = python.execute().await?;
+            python.teardown().await?;
+            CodeExecutionResponse {
+                stdout: Some(String::from_utf8(output.stdout)?),
+                stderr: Some(String::from_utf8(output.stderr)?),
+            }
+        }
+        _ => CodeExecutionResponse {
+            stderr: None,
+            stdout: None,
+        },
+    };
+
+    let mut response = Response::new(Body::from(serde_json::to_string(&response)?));
+    response
+        .headers_mut()
+        .append("Content-Type", "application/json".parse()?);
     response.extensions_mut().insert(span);
     Ok(response)
 }
 
-// A handler for "/users/:userId" page.
-async fn user_handler(req: Request<Body>) -> anyhow::Result<Response<Body>> {
-    let user_id = req.param("userId").unwrap();
-    Ok(Response::new(Body::from(format!("Hello {}", user_id))))
-}
-
 // A middleware which logs an http request.
-async fn logger(mut req: Request<Body>) -> anyhow::Result<Request<Body>> {
+async fn create_tracing_span(mut req: Request<Body>) -> anyhow::Result<Request<Body>> {
     let request_id = Uuid::new_v4();
     let span =
         tracing::info_span!("Http Request", http.method = %req.method(), request_id = %request_id);
     req.extensions_mut().insert(span.clone());
-    println!(
-        "{} {} {}",
-        req.remote_addr(),
-        req.method(),
-        req.uri().path()
-    );
     Ok(req)
-}
-
-async fn logger2(res: Response<Body>, req: RequestInfo) -> anyhow::Result<Response<Body>> {
-    Ok(res)
 }
 
 // Define an error handler function which will accept the `routerify::Error`
@@ -87,9 +87,8 @@ async fn error_handler(err: routerify::RouteError, _: RequestInfo) -> Response<B
 fn router() -> Router<Body, anyhow::Error> {
     Router::builder()
         .data(State(100))
-        .middleware(Middleware::pre(logger))
-        .middleware(Middleware::post_with_info(logger2))
-        .get("/users/:userId", user_handler)
+        .middleware(Middleware::pre(create_tracing_span))
+        .get("/api/exec-code", traceroute!(exec_handler))
         .err_handler_with_info(error_handler)
         .build()
         .unwrap()

@@ -2,9 +2,9 @@ use axum::{extract::Json, prelude::*};
 
 use std::net::SocketAddr;
 
-use uuid::Uuid;
-
 use crate::traits::{LanguageExecutor, Python};
+use tower_http::trace::TraceLayer;
+use uuid::Uuid;
 
 mod traits;
 mod util;
@@ -54,7 +54,7 @@ async fn exec_handler(
 async fn main() -> anyhow::Result<()> {
     util::initialize_tracing();
 
-    let app = route("/api/exec-code", get(exec_handler));
+    let app = route("/api/exec-code", get(exec_handler)).layer(TraceLayer::new_for_http());
     // Create a Service from the router above to handle incoming requests.
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 3030));

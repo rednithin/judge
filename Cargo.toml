@@ -1,23 +1,24 @@
 [package]
+edition = "2018"
 name = "judge"
 version = "0.1.0"
-edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = "*"
+async-trait = "*"
+axum = "*"
+chrono = "*"
+http = "*"
+hyper = "*"
 libc = "*"
 seccomp-sys = "*"
-tokio = { version = "1", features = ["full"] }
-hyper = "*"
-anyhow = "*"
-uuid = { version = "*", features = ["v4"] }
-routerify = "*"
-tracing = "*"
-tracing-subscriber = { version = "*", features = ["default", "env-filter"] }
-tracing-futures = "*"
-chrono="*"
-tracing-bunyan-formatter = "*"
-async-trait = "*"
-serde_json = "*"
 serde = {version = "*", features = ["derive"]}
+serde_json = "*"
+tokio = {version = "1", features = ["full"]}
+tracing = "*"
+tracing-bunyan-formatter = "*"
+tracing-futures = "*"
+tracing-subscriber = {version = "*", features = ["default", "env-filter"]}
+uuid = {version = "*", features = ["v4"]}
